@@ -1,0 +1,405 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  FlatList, 
+  TextInput, 
+  ScrollView, 
+  Alert 
+} from 'react-native';
+import { NavigationContainer, useIsFocused } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ==========================================
+// 💾 1. CAMADA DE PERSISTÊNCIA (STORAGE/CRUD)
+// ==========================================
+const STORAGE_KEY = '@zelabairro:ocorrencias';
+
+const OcorrenciaStorage = {
+  // CREATE
+  async save(ocorrencia) {
+    try {
+      const atuais = await this.getAll();
+      const novas = [...atuais, ocorrencia];
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(novas));
+    } catch (error) {
+      console.error("Erro ao salvar ocorrência:", error);
+    }
+  },
+
+  // READ
+  async getAll() {
+    try {
+      const dados = await AsyncStorage.getItem(STORAGE_KEY);
+      return dados ? JSON.parse(dados) : [];
+    } catch (error) {
+      console.error("Erro ao buscar ocorrências:", error);
+      return [];
+    }
+  },
+
+  // UPDATE
+  async update(ocorrenciaAtualizada) {
+    try {
+      const atuais = await this.getAll();
+      const novas = atuais.map(item => 
+        item.id === ocorrenciaAtualizada.id ? ocorrenciaAtualizada : item
+      );
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(novas));
+    } catch (error) {
+      console.error("Erro ao atualizar ocorrência:", error);
+    }
+  },
+
+  // DELETE
+  async delete(id) {
+    try {
+      const atuais = await this.getAll();
+      const filtradas = atuais.filter(item => item.id !== id);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(filtradas));
+    } catch (error) {
+      console.error("Erro ao deletar ocorrência:", error);
+    }
+  }
+};
+
+// ==========================================
+// 🎨 2. COMPONENTE: OCORRENCIA CARD
+// ==========================================
+function OcorrenciaCard({ item, onPress }) {
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Resolvido': return '#2e7d32';
+      case 'Em Andamento': return '#f57c00';
+      default: return '#d32f2f';
+    }
+  };
+
+  return (
+    <TouchableOpacity style={cardStyles.card} onPress={onPress}>
+      <View style={cardStyles.header}>
+        <Text style={cardStyles.title} numberOfLines={1}>{item.titulo}</Text>
+        <View style={[cardStyles.badge, { backgroundColor: getStatusColor(item.status) }]}>
+          <Text style={cardStyles.badgeText}>{item.status}</Text>
+        </View>
+      </View>
+      <Text style={cardStyles.category}>📁 {item.categoria}</Text>
+      <Text style={cardStyles.description} numberOfLines={2}>{item.descricao}</Text>
+      <Text style={cardStyles.location}>📍 {item.localizacao}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2.22,
+    elevation: 3,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    flex: 1,
+    marginRight: 8,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  category: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  description: {
+    fontSize: 14,
+    color: '#444',
+    marginBottom: 8,
+  },
+  location: {
+    fontSize: 12,
+    color: '#777',
+    fontStyle: 'italic',
+  },
+});
+
+// ==========================================
+// 📺 3. TELA: HOME (LISTAGEM)
+// ==========================================
+function HomeScreen({ navigation }) {
+  const [ocorrencias, setOcorrencias] = useState([]);
+  const isFocused = useIsFocused();
+
+  const carregarOcorrencias = async () => {
+    const dados = await OcorrenciaStorage.getAll();
+    setOcorrencias(dados);
+  };
+
+  useEffect(() => {
+    if (isFocused) {
+      carregarOcorrencias();
+    }
+  }, [isFocused]);
+
+  return (
+    <View style={homeStyles.container}>
+      <FlatList
+        data={ocorrencias}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <OcorrenciaCard 
+            item={item} 
+            onPress={() => navigation.navigate('Detalhes', { item })} 
+          />
+        )}
+        ListEmptyComponent={
+          <Text style={homeStyles.emptyText}>Nenhuma ocorrência registrada. Seu bairro está limpo! 🎉</Text>
+        }
+        contentContainerStyle={homeStyles.list}
+      />
+      
+      <TouchableOpacity 
+        style={homeStyles.fab} 
+        onPress={() => navigation.navigate('Formulário', { item: null })}
+      >
+        <Text style={homeStyles.fabText}>+</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const homeStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  list: {
+    padding: 16,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#888',
+    marginTop: 40,
+    fontSize: 16,
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    backgroundColor: '#1e88e5',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  fabText: {
+    color: '#fff',
+    fontSize: 32,
+    lineHeight: 32,
+  },
+});
+
+// ==========================================
+// 📝 4. TELA: FORMULÁRIO (CRIAR / EDITAR)
+// ==========================================
+function FormScreen({ route, navigation }) {
+  const editItem = route.params?.item;
+
+  const [titulo, setTitulo] = useState(editItem ? editItem.titulo : '');
+  const [categoria, setCategoria] = useState(editItem ? editItem.categoria : 'Iluminação');
+  const [descricao, setDescricao] = useState(editItem ? editItem.descricao : '');
+  const [localizacao, setLocalizacao] = useState(editItem ? editItem.localizacao : '');
+
+  const categorias = ['Iluminação', 'Buraco na Via', 'Foco de Dengue', 'Lixo Acumulado', 'Outros'];
+
+  const salvar = async () => {
+    if (!titulo || !descricao || !localizacao) {
+      Alert.alert('Atenção', 'Preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    const ocorrencia = {
+      id: editItem ? editItem.id : Date.now().toString(),
+      titulo,
+      categoria,
+      descricao,
+      localizacao,
+      status: editItem ? editItem.status : 'Pendente',
+    };
+
+    if (editItem) {
+      await OcorrenciaStorage.update(ocorrencia);
+    } else {
+      await OcorrenciaStorage.save(ocorrencia);
+    }
+
+    navigation.navigate('Início');
+  };
+
+  return (
+    <ScrollView style={formStyles.container}>
+      <Text style={formStyles.label}>Título da Ocorrência *</Text>
+      <TextInput style={formStyles.input} value={titulo} onChangeText={setTitulo} placeholder="Ex: Poste apagado há 3 dias" />
+
+      <Text style={formStyles.label}>Categoria</Text>
+      <View style={formStyles.categoryContainer}>
+        {categorias.map((cat) => (
+          <TouchableOpacity 
+            key={cat} 
+            style={[formStyles.categoryButton, categoria === cat && formStyles.categoryButtonActive]}
+            onPress={() => setCategoria(cat)}
+          >
+            <Text style={[formStyles.categoryButtonText, categoria === cat && formStyles.categoryButtonTextActive]}>{cat}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={formStyles.label}>Descrição Detalhada *</Text>
+      <TextInput 
+        style={[formStyles.input, formStyles.textArea]} 
+        value={descricao} 
+        onChangeText={setDescricao} 
+        placeholder="Descreva o problema..." 
+        multiline
+        numberOfLines={4}
+      />
+
+      <Text style={formStyles.label}>Localização / Endereço *</Text>
+      <TextInput style={formStyles.input} value={localizacao} onChangeText={setLocalizacao} placeholder="Ex: Rua das Flores, em frente ao nº 123" />
+
+      <TouchableOpacity style={formStyles.saveButton} onPress={salvar}>
+        <Text style={formStyles.saveButtonText}>{editItem ? 'Atualizar Registro' : 'Registrar Problema'}</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+const formStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 16,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 6,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#fafafa',
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  categoryContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  categoryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#eee',
+  },
+  categoryButtonActive: {
+    backgroundColor: '#1e88e5',
+  },
+  categoryButtonText: {
+    color: '#333',
+  },
+  categoryButtonTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  saveButton: {
+    backgroundColor: '#2e7d32',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 40,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+});
+
+// ==========================================
+// 🔍 5. TELA: DETALHES (LEITURA / DELETE)
+// ==========================================
+function DetailScreen({ route, navigation }) {
+  const { item } = route.params;
+  const [status, setStatus] = useState(item.status);
+
+  const atualizarStatus = async (novoStatus) => {
+    const itemAtualizado = { ...item, status: novoStatus };
+    await OcorrenciaStorage.update(itemAtualizado);
+    setStatus(novoStatus);
+    Alert.alert('Sucesso', `Status atualizado para: ${novoStatus}`);
+  };
+
+  const deletarOcorrencia = () => {
+    Alert.alert(
+      'Confirmar Exclusão',
+      'Tem certeza de que deseja apagar este registro permanentemente?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Excluir', 
+          style: 'destructive', 
+          onPress: async () => {
+            await OcorrenciaStorage.delete(item.id);
+            navigation.navigate('Início');
+          } 
+        }
+      ]
+    );
+  };
+
+  return (
+    <View style={detailStyles.container}>
+      <View style={detailStyles.card}>
+        <Text style={detailStyles.title}>{item.titulo}</Text>
+        <Text style={detailStyles.category}>📁 Categoria: {item.categoria}</Text>
+        <Text style
